@@ -1,0 +1,14 @@
+{
+	"autodeskProduct": "Fusion",
+	"type": "addin",
+	"id": "0de5f283-ac7e-468d-86a5-aa9b56f186be",
+	"author": "Vincent LAMBERT",
+	"description": {
+		"": "Analyse hiérarchique des masses d'un assemblage : masse totale, sunburst par sous-ensemble, tableau trié, carte de chaleur et export CSV."
+	},
+	"version": "0.1.0",
+	"runOnStartup": false,
+	"supportedOS": "windows|mac",
+	"editEnabled": true,
+	"iconFilename": "resources/32x32.png"
+}
