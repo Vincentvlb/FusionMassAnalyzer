@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fusion Mass Analyzer</title>
+  <link rel="stylesheet" href="palette.css">
+</head>
+<body>
+  <header class="top">
+    <div class="total">
+      <div class="label">Masse totale</div>
+      <div id="total" class="value">—</div>
+      <div id="meta" class="meta">Analyse en cours…</div>
+    </div>
+    <div class="toolbar">
+      <div class="group">
+        <button id="btn-analyze" class="primary" title="Relancer l'analyse du design actif">Analyser</button>
+        <label><input type="checkbox" id="opt-hidden"> Ignorer les éléments masqués</label>
+        <label><input type="checkbox" id="opt-bodies" checked> Afficher les corps</label>
+      </div>
+      <div class="group">
+        <button id="btn-heat" title="Applique temporairement une couleur à chaque pièce selon sa masse">Colorer par masse</button>
+        <label><input type="checkbox" id="opt-log"> Échelle log</label>
+        <button id="btn-restore" title="Remet les apparences d'origine">Restaurer</button>
+      </div>
+      <div class="group">
+        <button id="btn-csv">Exporter CSV</button>
+        <select id="opt-csv" title="Format du CSV">
+          <option value="fr">; et virgule décimale (Excel FR)</option>
+          <option value="intl">, et point décimal</option>
+        </select>
+      </div>
+    </div>
+    <div id="legend" class="legend" hidden></div>
+    <div id="status" class="status" role="status"></div>
+  </header>
+
+  <main>
+    <section class="chart-panel">
+      <nav id="crumbs" class="crumbs" aria-label="Sous-ensemble affiché"></nav>
+      <div id="chart" class="chart"></div>
+      <p class="hint">Clic sur une part : zoom + sélection dans Fusion. Clic au centre : remonter.</p>
+    </section>
+
+    <section class="table-panel">
+      <div class="table-head">
+        <input id="filter" type="search" placeholder="Filtrer par nom ou chemin…">
+        <span id="row-count" class="muted"></span>
+      </div>
+      <div class="table-wrap">
+        <table id="table">
+          <thead>
+            <tr>
+              <th data-sort="name">Nom</th>
+              <th data-sort="path">Chemin</th>
+              <th data-sort="total" class="num">Masse</th>
+              <th data-sort="pct" class="num">% total</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <details id="warnings" class="warnings" hidden>
+        <summary></summary>
+        <ul></ul>
+      </details>
+    </section>
+  </main>
+
+  <script src="vendor/d3.min.js"></script>
+  <script src="palette.js"></script>
+</body>
+</html>

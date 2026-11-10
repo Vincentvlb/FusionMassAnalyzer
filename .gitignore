@@ -13,3 +13,6 @@ Thumbs.db
 
 # Fusion
 *.log
+
+# Claude Code local config
+.claude/
