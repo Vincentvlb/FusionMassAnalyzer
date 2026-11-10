@@ -221,5 +221,7 @@ class _HtmlIncoming(adsk.core.HTMLEventHandler):
             reply = {"ok": True, "data": handler(data)}
         except Exception as exc:
             log(traceback.format_exc(), adsk.core.LogLevels.ErrorLogLevel)
-            reply = {"ok": False, "error": str(exc)}
+            tb = traceback.extract_tb(exc.__traceback__)
+            where = ("%s:%d" % (os.path.basename(tb[-1].filename), tb[-1].lineno)) if tb else ""
+            reply = {"ok": False, "error": "%s (%s)" % (exc, where) if where else str(exc)}
         html_args.returnData = json.dumps(reply)

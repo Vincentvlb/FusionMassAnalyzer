@@ -21,10 +21,21 @@ _SCAN_LIMIT = 400
 _OVERRIDE = getattr(adsk.core.AppearanceSourceTypes, "OverrideAppearanceSource", None)
 
 
+def _safe(fn, *args):
+    """Some Fusion lookups (e.g. a library's appearances.itemByName) raise
+    'invalid name' instead of returning None when nothing matches."""
+    try:
+        return fn(*args)
+    except Exception:
+        return None
+
+
 def _color_property(appearance):
-    props = appearance.appearanceProperties
+    props = _safe(lambda: appearance.appearanceProperties)
+    if not props:
+        return None
     for pid in COLOR_PROPERTY_IDS:
-        prop = adsk.core.ColorProperty.cast(props.itemById(pid))
+        prop = adsk.core.ColorProperty.cast(_safe(props.itemById, pid))
         if prop:
             return prop
     return None
@@ -51,10 +62,12 @@ class Heatmap:
         return bool(self._saved)
 
     # ------------------------------------------------------------ appearances
-    def _find_base(self, app):
+    def _base_candidates(self, app, design):
+        """Appearances that can be copied, best first: Fusion appearance
+        library (known names, then a scan), then appearances already in the design."""
         libs = app.materialLibraries
         ordered = []
-        lib = libs.itemById(FUSION_APPEARANCE_LIBRARY_ID)
+        lib = _safe(libs.itemById, FUSION_APPEARANCE_LIBRARY_ID)
         if lib:
             ordered.append(lib)
         for i in range(libs.count):
@@ -63,29 +76,46 @@ class Heatmap:
                 ordered.append(other)
         for lib in ordered:
             for name in CANDIDATE_BASE_NAMES:
-                a = lib.appearances.itemByName(name)
+                a = _safe(lib.appearances.itemByName, name)
                 if a and _color_property(a):
-                    return a
+                    yield a
         for lib in ordered:
-            apps = lib.appearances
+            apps = _safe(lambda: lib.appearances)
+            if not apps:
+                continue
             for i in range(min(apps.count, _SCAN_LIMIT)):
-                a = apps.item(i)
-                if _color_property(a):
-                    return a
-        return None
+                a = _safe(apps.item, i)
+                if a and _color_property(a):
+                    yield a
+        apps = design.appearances
+        for i in range(apps.count):
+            a = apps.item(i)
+            if not a.name.startswith(heat.APPEARANCE_PREFIX) and _color_property(a):
+                yield a
+
+    def _create(self, app, design, name):
+        errors = []
+        for tries, base in enumerate(self._base_candidates(app, design)):
+            if tries >= 25:
+                break
+            try:
+                created = design.appearances.addByCopy(base, name)
+            except Exception as exc:  # e.g. library appearance not downloaded
+                errors.append("%s: %s" % (_safe(lambda: base.name), exc))
+                continue
+            if created and _color_property(created):
+                return created
+        raise RuntimeError("Impossible de créer l'apparence %s (%s)" % (
+            name, "; ".join(errors[-3:]) or "aucune apparence colorable trouvée"))
 
     def ensure_appearances(self, design, buckets=heat.BUCKETS):
         app = adsk.core.Application.get()
         out = []
-        base = None
         for i in range(buckets):
             name = heat.appearance_name(i)
-            appearance = design.appearances.itemByName(name)
+            appearance = _safe(design.appearances.itemByName, name)
             if not appearance:
-                base = base or self._find_base(app)
-                if base is None:
-                    raise RuntimeError("Aucune apparence colorable trouvée dans les bibliothèques Fusion.")
-                appearance = design.appearances.addByCopy(base, name)
+                appearance = self._create(app, design, name)
             prop = _color_property(appearance)
             if prop:
                 r, g, b = heat.bucket_color(i, buckets)
