@@ -1,0 +1,20 @@
+[project]
+name = "fusion-mass-analyzer"
+version = "0.1.0"
+description = "Autodesk Fusion add-in: hierarchical mass analysis, sunburst chart and mass heatmap."
+readme = "README.md"
+license = { text = "MIT" }
+# Fusion embeds its own Python (3.12 today). The add-in has no runtime
+# dependency; uv only manages the development environment (tests).
+requires-python = ">=3.9"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
