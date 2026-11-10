@@ -208,6 +208,8 @@
       p.className = "empty";
       p.textContent = "Aucune masse à afficher (design vide ou corps sans matériau).";
       el.chart.appendChild(p);
+      state.colorOf = null;
+      state.zoom = null;
       renderTable(root);
       renderCrumbs(root);
       return;
@@ -224,6 +226,7 @@
       const base = d3.color(palette[(topIndex.get(top) || 0) % palette.length]);
       return base.brighter(0.22 * (d.depth - 1)).formatHex();
     };
+    state.colorOf = color;
 
     const width = 600;
     const radius = width / 6;
@@ -312,74 +315,133 @@
       renderTable(p);
     }
 
+    state.zoom = zoom;
     const initial = state.focusId && root.descendants().find((d) => d.data.id === state.focusId && d.children);
     zoom(initial || root, true);
   }
 
   function renderCrumbs(node, zoom) {
-    el.crumbs.replaceChildren();
-    node.ancestors().reverse().forEach((a, i, arr) => {
-      if (i) {
-        const s = document.createElement("span");
-        s.className = "sep";
-        s.textContent = "›";
-        el.crumbs.appendChild(s);
-      }
-      const link = document.createElement(i === arr.length - 1 || !zoom ? "span" : "a");
-      link.textContent = a.data.name;
-      if (link.tagName === "A") link.addEventListener("click", () => zoom(a));
-      el.crumbs.appendChild(link);
+    const chain = node.ancestors().reverse();
+    const up = document.createElement("button");
+    up.className = "crumb-up";
+    up.textContent = "↑";
+    up.title = "Remonter d'un niveau";
+    up.disabled = !zoom || !node.parent;
+    up.addEventListener("click", () => zoom(node.parent));
+    const items = [up];
+    const chip = (a, label) => {
+      const b = document.createElement("button");
+      const current = a === node;
+      b.className = "crumb" + (current ? " current" : "");
+      b.textContent = label || a.data.name;
+      b.title = a.data.name + " — " + formatMass(a.value);
+      if (current || !zoom) b.disabled = true;
+      else b.addEventListener("click", () => zoom(a));
+      return b;
+    };
+    const sep = () => {
+      const s = document.createElement("span");
+      s.className = "sep";
+      s.textContent = "›";
+      return s;
+    };
+    // long chains: root › … › parent › current
+    let shown = chain;
+    if (chain.length > 4) {
+      const hidden = chain.slice(1, -2);
+      const more = chip(hidden[hidden.length - 1], "…");
+      more.title = hidden.map((a) => a.data.name).join(" › ");
+      shown = [chain[0], { more }, ...chain.slice(-2)];
+    }
+    shown.forEach((a, i) => {
+      if (i) items.push(sep());
+      items.push(a.more || chip(a));
     });
+    el.crumbs.replaceChildren(...items);
   }
 
+  // Table: the two rings shown by the sunburst (children of the focus, then
+  // their children grouped underneath). A search looks through the whole subtree.
   let tableNode = null;
   function renderTable(node) {
     if (node) tableNode = node;
     if (!tableNode) return;
     const q = el.filter.value.trim().toLowerCase();
-    let rows = tableNode.descendants().slice(1).filter((d) => d.data.kind !== "own").map((d) => ({
-      id: d.data.id, name: d.data.name, path: d.data.path, kind: d.data.kind,
-      total: d.data.total, pct: d.data.pct, flags: d.data.flags,
-    }));
-    if (q) rows = rows.filter((r) => r.name.toLowerCase().includes(q) || r.path.toLowerCase().includes(q));
     const k = state.sortKey;
     const dir = state.sortAsc ? 1 : -1;
-    rows.sort((a, b) => (typeof a[k] === "string" ? a[k].localeCompare(b[k]) : a[k] - b[k]) * dir);
+    const keyOf = (d) => (k === "name" ? d.data.name : k === "path" ? d.data.path : d.value);
+    const cmp = (a, b) => {
+      const x = keyOf(a), y = keyOf(b);
+      return (typeof x === "string" ? x.localeCompare(y) : x - y) * dir;
+    };
+    const real = (d) => d.data.kind !== "own";
+    const rel = (d) => d.ancestors().reverse().slice(tableNode.depth + 1).map((a) => a.data.name).join(" / ");
 
-    const max = rows.reduce((m, r) => Math.max(m, r.total), 0) || 1;
+    let rows = [];
+    let total = 0;
+    if (q) {
+      rows = tableNode.descendants().slice(1).filter(real)
+        .filter((d) => d.data.name.toLowerCase().includes(q) || d.data.path.toLowerCase().includes(q))
+        .sort(cmp).map((d) => ({ d, level: 1 }));
+      total = rows.length;
+    } else {
+      (tableNode.children || []).filter(real).sort(cmp).forEach((c) => {
+        rows.push({ d: c, level: 1 });
+        (c.children || []).filter(real).sort(cmp).forEach((g) => rows.push({ d: g, level: 2 }));
+      });
+      total = tableNode.descendants().length - 1;
+    }
+
+    const max = rows.reduce((m, r) => Math.max(m, r.d.value), 0) || 1;
     const LIMIT = 1500;
     const frag = document.createDocumentFragment();
-    rows.slice(0, LIMIT).forEach((r) => {
+    rows.slice(0, LIMIT).forEach(({ d, level }) => {
       const tr = document.createElement("tr");
-      tr.dataset.id = r.id;
-      tr.className = "kind-" + r.kind + (r.id === state.activeId ? " active" : "");
+      tr.dataset.id = d.data.id;
+      tr.className = `lvl-${level} kind-${d.data.kind}` + (d.data.id === state.activeId ? " active" : "");
       const name = document.createElement("td");
-      name.textContent = r.name;
-      if (r.flags.length) {
+      name.className = "name";
+      const sw = document.createElement("span");
+      sw.className = "swatch";
+      if (state.colorOf) sw.style.background = state.colorOf(d);
+      const label = document.createElement("span");
+      label.textContent = d.data.name;
+      name.append(sw, label);
+      if (d.children && level === 1 && !q) {
+        const n = document.createElement("span");
+        n.className = "count";
+        n.textContent = d.children.filter(real).length;
+        n.title = "éléments dans ce sous-ensemble — double-clic pour zoomer";
+        name.appendChild(n);
+      }
+      if (d.data.flags.length) {
         const f = document.createElement("span");
         f.className = "flag";
         f.textContent = "⚠";
-        f.title = flagText(r.flags);
+        f.title = flagText(d.data.flags);
         name.appendChild(f);
       }
       const path = document.createElement("td");
       path.className = "path";
-      path.textContent = r.path;
-      path.title = r.path;
+      path.textContent = rel(d);
+      path.title = d.data.path;
       const mass = document.createElement("td");
       mass.className = "num bar-cell";
       const bar = document.createElement("i");
-      bar.style.width = (100 * r.total / max).toFixed(1) + "%";
-      mass.append(bar, document.createTextNode(formatMass(r.total)));
+      bar.style.width = ((100 * d.value) / max).toFixed(1) + "%";
+      mass.append(bar, document.createTextNode(formatMass(d.value)));
       const pct = document.createElement("td");
       pct.className = "num";
-      pct.textContent = formatPct(r.pct);
+      pct.textContent = formatPct(d.data.pct);
       tr.append(name, path, mass, pct);
-      tr.addEventListener("click", () => selectInFusion(r.id));
+      tr.addEventListener("click", () => selectInFusion(d.data.id));
+      if (d.children && state.zoom) tr.addEventListener("dblclick", () => state.zoom(d));
       frag.appendChild(tr);
     });
     el.tbody.replaceChildren(frag);
-    el.rowCount.textContent = rows.length > LIMIT ? `${LIMIT} / ${rows.length} lignes` : `${rows.length} ligne(s)`;
+    el.rowCount.textContent = q
+      ? `${Math.min(rows.length, LIMIT)} résultat(s)`
+      : `${rows.length} / ${total} élément(s) · 2 niveaux`;
     document.querySelectorAll("th[data-sort]").forEach((th) => {
       th.classList.toggle("sorted", th.dataset.sort === k);
       th.classList.toggle("asc", th.dataset.sort === k && state.sortAsc);
