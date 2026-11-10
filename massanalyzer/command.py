@@ -90,10 +90,15 @@ def show_palette():
     if not palette:
         url = PALETTE_HTML.replace("\\", "/")  # same convention as Autodesk's template
         palette = ui.palettes.add(PALETTE_ID, PALETTE_NAME, url, True, True, True, 960, 760, True)
-        palette.dockingState = adsk.core.PaletteDockStates.PaletteDockStateRight
+        # wire the HTML handler first: nothing below may prevent it
         incoming = _HtmlIncoming()
         palette.incomingFromHTML.add(incoming)
         _handlers.append(incoming)
+        try:
+            palette.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight
+        except Exception:
+            log("Ancrage de la palette impossible : " + traceback.format_exc(),
+                adsk.core.LogLevels.WarningLogLevel)
         # the page sends "ready" once loaded, which triggers the first analysis
     else:
         palette.isVisible = True
